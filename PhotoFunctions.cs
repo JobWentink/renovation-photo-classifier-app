@@ -17,14 +17,22 @@ public class PhotoFunctions
         _logger = logger;
     }
 
+    private static string GetUserId(HttpRequestData req)
+    {
+        if (req.Headers.TryGetValues("X-User-Id", out var values))
+            return values.FirstOrDefault() ?? "default";
+        return "default";
+    }
+
     [Function("GetPhotos")]
     public async Task<HttpResponseData> GetPhotos(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "photos")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var status = req.Query["status"];
+        var search = req.Query["search"];
         
-        var photos = await _photoService.GetPhotosAsync(userId, status);
+        var photos = await _photoService.GetPhotosAsync(userId, status, search);
         return await JsonResponse(req, photos);
     }
 
@@ -33,7 +41,7 @@ public class PhotoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "photos/{id}")] HttpRequestData req,
         string id)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var photo = await _photoService.GetPhotoAsync(id, userId);
         
         if (photo == null)
@@ -46,16 +54,35 @@ public class PhotoFunctions
     public async Task<HttpResponseData> InitiateUpload(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "photos/upload")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
-        var body = await JsonSerializer.DeserializeAsync<UploadRequest>(req.Body, JsonOptions);
-        
-        if (body?.FileName == null)
-            return req.CreateResponse(HttpStatusCode.BadRequest);
-
-        var photo = await _photoService.CreatePhotoAsync(body.FileName, userId);
-        var uploadUrl = await _photoService.GetUploadUrlAsync(photo);
-        
-        return await JsonResponse(req, new { photoId = photo.Id, uploadUrl }, HttpStatusCode.Created);
+        try
+        {
+            var userId = GetUserId(req);
+            _logger.LogInformation("InitiateUpload called for user {UserId}", userId);
+            
+            var body = await JsonSerializer.DeserializeAsync<UploadRequest>(req.Body, JsonOptions);
+            
+            if (body?.FileName == null)
+            {
+                _logger.LogWarning("Bad request: fileName is null");
+                return req.CreateResponse(HttpStatusCode.BadRequest);
+            }
+            
+            _logger.LogInformation("Creating photo record for {FileName}", body.FileName);
+            var photo = await _photoService.CreatePhotoAsync(body.FileName, userId);
+            
+            _logger.LogInformation("Getting upload URL for photo {PhotoId}", photo.Id);
+            var uploadUrl = await _photoService.GetUploadUrlAsync(photo);
+            
+            _logger.LogInformation("Upload URL generated successfully");
+            return await JsonResponse(req, new { photoId = photo.Id, uploadUrl }, HttpStatusCode.Created);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in InitiateUpload: {Message}", ex.Message);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteStringAsync($"Error: {ex.Message}");
+            return errorResponse;
+        }
     }
 
     [Function("ProcessPhoto")]
@@ -63,15 +90,25 @@ public class PhotoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "photos/{id}/process")] HttpRequestData req,
         string id)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
-        _logger.LogInformation("Processing photo {PhotoId} for user {UserId}", id, userId);
-        
-        var photo = await _photoService.ProcessPhotoAsync(id, userId);
-        
-        if (photo == null)
-            return req.CreateResponse(HttpStatusCode.NotFound);
+        try
+        {
+            var userId = GetUserId(req);
+            _logger.LogInformation("Processing photo {PhotoId} for user {UserId}", id, userId);
             
-        return await JsonResponse(req, photo);
+            var photo = await _photoService.ProcessPhotoAsync(id, userId);
+            
+            if (photo == null)
+                return req.CreateResponse(HttpStatusCode.NotFound);
+                
+            return await JsonResponse(req, photo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing photo {PhotoId}: {Message}", id, ex.Message);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteStringAsync($"Error: {ex.Message}");
+            return errorResponse;
+        }
     }
 
     [Function("UpdateCategories")]
@@ -79,7 +116,7 @@ public class PhotoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "photos/{id}/categories")] HttpRequestData req,
         string id)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var body = await JsonSerializer.DeserializeAsync<UpdateCategoriesRequest>(req.Body, JsonOptions);
         
         if (body?.Categories == null)
@@ -98,7 +135,7 @@ public class PhotoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "photos/{id}")] HttpRequestData req,
         string id)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         await _photoService.DeletePhotoAsync(id, userId);
         return req.CreateResponse(HttpStatusCode.NoContent);
     }
@@ -107,7 +144,7 @@ public class PhotoFunctions
     public async Task<HttpResponseData> GetDashboard(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var stats = await _photoService.GetStatsAsync(userId);
         return await JsonResponse(req, stats);
     }
@@ -116,7 +153,7 @@ public class PhotoFunctions
     public async Task<HttpResponseData> GetReviewQueue(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "review")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var photos = await _photoService.GetPhotosAsync(userId, "needs_review");
         return await JsonResponse(req, photos);
     }
@@ -145,7 +182,7 @@ public class PhotoFunctions
     public async Task<HttpResponseData> GetAlbums(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "albums")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var albums = await _photoService.GetAlbumsAsync(userId);
         return await JsonResponse(req, albums);
     }
@@ -154,7 +191,7 @@ public class PhotoFunctions
     public async Task<HttpResponseData> CreateAlbum(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "albums")] HttpRequestData req)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var body = await JsonSerializer.DeserializeAsync<CreateAlbumRequest>(req.Body, JsonOptions);
         
         if (body?.Name == null)
@@ -169,7 +206,7 @@ public class PhotoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "albums/{id}/photos")] HttpRequestData req,
         string id)
     {
-        var userId = req.Headers.GetValues("X-User-Id")?.FirstOrDefault() ?? "default";
+        var userId = GetUserId(req);
         var body = await JsonSerializer.DeserializeAsync<AddPhotosRequest>(req.Body, JsonOptions);
         
         if (body?.PhotoIds == null)
@@ -181,6 +218,15 @@ public class PhotoFunctions
             return req.CreateResponse(HttpStatusCode.NotFound);
             
         return await JsonResponse(req, album);
+    }
+
+    [Function("Health")]
+    public HttpResponseData Health(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequestData req)
+    {
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.WriteString("OK");
+        return response;
     }
 
     private async Task<HttpResponseData> JsonResponse<T>(HttpRequestData req, T data, HttpStatusCode status = HttpStatusCode.OK)

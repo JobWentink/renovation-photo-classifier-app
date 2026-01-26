@@ -44,9 +44,12 @@ public class PhotoService
 
     public async Task<Photo> CreatePhotoAsync(string fileName, string userId)
     {
+        _logger.LogInformation("CreatePhotoAsync called with fileName={FileName}, userId={UserId}", fileName, userId);
+        
         var photo = new Photo
         {
             Id = Guid.NewGuid().ToString(),
+            UserId = userId,  // Partition key
             FileName = fileName,
             UploadedBy = userId,
             UploadedAt = DateTime.UtcNow,
@@ -54,7 +57,20 @@ public class PhotoService
         };
 
         photo.BlobPath = $"{userId}/{photo.Id}/{fileName}";
-        await _photosContainer.CreateItemAsync(photo, new PartitionKey(userId));
+        
+        _logger.LogInformation("Creating photo with Id={Id}, UploadedBy={UploadedBy}", photo.Id, photo.UploadedBy);
+        
+        try 
+        {
+            await _photosContainer.CreateItemAsync(photo, new PartitionKey(photo.UploadedBy));
+            _logger.LogInformation("Photo created successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create photo in Cosmos DB: {Message}", ex.Message);
+            throw;
+        }
+        
         return photo;
     }
 
@@ -93,18 +109,21 @@ public class PhotoService
             await blobClient.DownloadToAsync(stream);
             stream.Position = 0;
 
-            // Extract EXIF
+            // Extract EXIF first (before any conversion)
             photo.Exif = ExtractExif(stream);
             stream.Position = 0;
 
+            // Convert HEIC to JPEG if needed
+            var processStream = await ConvertHeicIfNeededAsync(stream, photo.FileName);
+
             // Generate thumbnail
-            photo.ThumbnailBlobPath = await GenerateThumbnailAsync(stream, photo, userId);
-            stream.Position = 0;
+            photo.ThumbnailBlobPath = await GenerateThumbnailAsync(processStream, photo, userId);
+            processStream.Position = 0;
 
             // AI Vision analysis
             if (_visionClient != null)
             {
-                photo.AiAnalysis = await AnalyzeWithVisionAsync(stream);
+                photo.AiAnalysis = await AnalyzeWithVisionAsync(processStream);
                 photo.Categories = ClassifyPhoto(photo.AiAnalysis);
                 photo.Status = photo.Categories.Any(c => c.Confidence < 0.7) ? "needs_review" : "classified";
             }
@@ -169,6 +188,36 @@ public class PhotoService
             _logger.LogWarning(ex, "Failed to extract EXIF");
             return null;
         }
+    }
+
+    private async Task<Stream> ConvertHeicIfNeededAsync(Stream inputStream, string fileName)
+    {
+        var ext = Path.GetExtension(fileName)?.ToLowerInvariant();
+        if (ext == ".heic" || ext == ".heif")
+        {
+            try
+            {
+                _logger.LogInformation("Converting HEIC/HEIF file to JPEG: {FileName}", fileName);
+                
+                // ImageSharp can read HEIC files and convert them
+                using var image = await SixLabors.ImageSharp.Image.LoadAsync(inputStream);
+                var outputStream = new MemoryStream();
+                await image.SaveAsJpegAsync(outputStream);
+                outputStream.Position = 0;
+                
+                _logger.LogInformation("HEIC conversion successful for {FileName}", fileName);
+                return outputStream;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HEIC conversion failed for {FileName}, using original stream", fileName);
+                inputStream.Position = 0;
+                return inputStream;
+            }
+        }
+        
+        inputStream.Position = 0;
+        return inputStream;
     }
 
     private async Task<string> GenerateThumbnailAsync(Stream stream, Photo photo, string userId)
@@ -314,8 +363,9 @@ public class PhotoService
         return blobClient.GenerateSasUri(sasBuilder).ToString();
     }
 
-    public async Task<List<Photo>> GetPhotosAsync(string userId, string? status = null)
+    public async Task<List<Photo>> GetPhotosAsync(string userId, string? status = null, string? search = null)
     {
+        // Build base query - CosmosDB doesn't support full-text search, so we'll filter in memory for search
         var query = status != null
             ? new QueryDefinition("SELECT * FROM c WHERE c.uploadedBy = @userId AND c.status = @status ORDER BY c.uploadedAt DESC")
                 .WithParameter("@userId", userId)
@@ -330,7 +380,40 @@ public class PhotoService
             var response = await iterator.ReadNextAsync();
             photos.AddRange(response);
         }
+
+        // Apply search filter in memory if provided
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLowerInvariant();
+            photos = photos.Where(p => MatchesSearch(p, searchLower)).ToList();
+        }
+
         return photos;
+    }
+
+    private bool MatchesSearch(Photo photo, string searchLower)
+    {
+        // Search in file name
+        if (photo.FileName?.ToLowerInvariant().Contains(searchLower) == true)
+            return true;
+
+        // Search in categories (e.g., "kitchen", "bathroom")
+        if (photo.Categories?.Any(c => c.Name?.ToLowerInvariant().Contains(searchLower) == true) == true)
+            return true;
+
+        // Search in AI caption
+        if (photo.AiAnalysis?.Caption?.ToLowerInvariant().Contains(searchLower) == true)
+            return true;
+
+        // Search in AI tags
+        if (photo.AiAnalysis?.Tags?.Any(t => t.Name?.ToLowerInvariant().Contains(searchLower) == true) == true)
+            return true;
+
+        // Search in AI detected objects
+        if (photo.AiAnalysis?.Objects?.Any(o => o?.ToLowerInvariant().Contains(searchLower) == true) == true)
+            return true;
+
+        return false;
     }
 
     public async Task<Photo?> GetPhotoAsync(string photoId, string userId)
@@ -445,18 +528,33 @@ public class PhotoService
 // Models
 public class Photo
 {
+    [Newtonsoft.Json.JsonProperty("id")]
     public string Id { get; set; } = "";
+    [Newtonsoft.Json.JsonProperty("userId")]
+    public string UserId { get; set; } = "default";
+    [Newtonsoft.Json.JsonProperty("fileName")]
     public string FileName { get; set; } = "";
+    [Newtonsoft.Json.JsonProperty("blobPath")]
     public string BlobPath { get; set; } = "";
+    [Newtonsoft.Json.JsonProperty("thumbnailBlobPath")]
     public string? ThumbnailBlobPath { get; set; }
+    [Newtonsoft.Json.JsonProperty("thumbnailUrl")]
     public string? ThumbnailUrl { get; set; }
+    [Newtonsoft.Json.JsonProperty("imageUrl")]
     public string? ImageUrl { get; set; }
+    [Newtonsoft.Json.JsonProperty("uploadedBy")]
     public string UploadedBy { get; set; } = "default";
+    [Newtonsoft.Json.JsonProperty("uploadedAt")]
     public DateTime UploadedAt { get; set; }
+    [Newtonsoft.Json.JsonProperty("status")]
     public string Status { get; set; } = "pending";
+    [Newtonsoft.Json.JsonProperty("categories")]
     public List<PhotoCategory>? Categories { get; set; }
+    [Newtonsoft.Json.JsonProperty("manuallyClassified")]
     public bool ManuallyClassified { get; set; }
+    [Newtonsoft.Json.JsonProperty("exif")]
     public ExifData? Exif { get; set; }
+    [Newtonsoft.Json.JsonProperty("aiAnalysis")]
     public AiAnalysisResult? AiAnalysis { get; set; }
 }
 
