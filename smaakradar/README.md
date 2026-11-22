@@ -69,4 +69,4 @@ tests/               unit tests
 
 ## Publiceren
 
-De workflow `.github/workflows/smaakradar-pages.yml` bouwt en publiceert de app naar **GitHub Pages** bij elke push naar `main`. Zet eenmalig in de repo *Settings → Pages → Source* op **GitHub Actions**. Omdat de build relatieve paden gebruikt, werkt `dist/` ook op Netlify, Vercel of elke andere statische host.
+De workflow `.github/workflows/smaakradar-pages.yml` bouwt en publiceert de app naar **GitHub Pages** bij elke push naar `master`. Zet eenmalig in de repo *Settings → Pages → Source* op **GitHub Actions**. Omdat de build relatieve paden gebruikt, werkt `dist/` ook op Netlify, Vercel of elke andere statische host.

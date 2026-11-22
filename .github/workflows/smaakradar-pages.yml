@@ -2,7 +2,7 @@ name: Smaakradar → GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths: ['smaakradar/**', '.github/workflows/smaakradar-pages.yml']
   workflow_dispatch:
 
