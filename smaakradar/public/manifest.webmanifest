@@ -1,0 +1,19 @@
+{
+  "name": "Smaakradar",
+  "short_name": "Smaakradar",
+  "description": "De beste (4,5★+) en nieuwste restaurants bij jou in de buurt, op de kaart.",
+  "lang": "nl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbf7f2",
+  "theme_color": "#ff5a3c",
+  "categories": ["food", "travel", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
