@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Smaakradar · de beste & nieuwste restaurants bij jou in de buurt</title>
+    <meta name="description" content="Vul je adres in en ontdek alle restaurants met 4,5★ of meer én de nieuwste zaken bij jou in de buurt. Op de kaart, met je eigen afvinklijst." />
+    <meta name="theme-color" content="#ff5a3c" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16151a" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Smaakradar" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Smaakradar, begin opnieuw">
+          <img src="./icons/icon.svg" alt="" width="34" height="34" />
+          <span>Smaak<b>radar</b></span>
+        </a>
+        <form class="search" id="searchForm" role="search" autocomplete="off">
+          <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          <input id="address" type="search" inputmode="search" placeholder="Vul je adres of plaats in…" aria-label="Adres" aria-autocomplete="list" aria-controls="suggestions" enterkeyhint="search" />
+          <button type="button" class="locate" id="locateBtn" title="Gebruik mijn locatie" aria-label="Gebruik mijn locatie">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
+        </form>
+        <button class="icon-btn" id="settingsBtn" aria-label="Instellingen" title="Instellingen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="10" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>
+        </button>
+      </header>
+
+      <main class="layout">
+        <aside class="panel" id="panel" data-sheet="half">
+          <div class="sheet-head" id="sheetHead">
+            <div class="sheet-grip" aria-hidden="true"></div>
+            <nav class="tabs" role="tablist">
+              <button role="tab" class="tab is-active" data-tab="discover" aria-selected="true">Ontdekken</button>
+              <button role="tab" class="tab" data-tab="mine" aria-selected="false">Mijn lijst <span class="tab-count" id="mineCount"></span></button>
+            </nav>
+          </div>
+
+          <section class="tabpane" id="pane-discover" role="tabpanel">
+            <div id="discoverBody"></div>
+          </section>
+          <section class="tabpane" id="pane-mine" role="tabpanel" hidden></section>
+          <section class="tabpane detail" id="pane-detail" hidden></section>
+        </aside>
+
+        <div class="map-wrap">
+          <div id="map" class="map" aria-label="Kaart met restaurants"></div>
+          <div class="map-fabs">
+            <button class="fab" id="surpriseBtn" title="Verras me!" hidden>🎲 <span>Verras me</span></button>
+            <button class="fab fab--round" id="recenterBtn" title="Terug naar zoekgebied" aria-label="Terug naar zoekgebied" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z" fill="currentColor"/></svg>
+            </button>
+          </div>
+          <div class="legend" id="legend" hidden>
+            <span><i class="lg lg--gold"></i>4,7+</span>
+            <span><i class="lg lg--top"></i>Top</span>
+            <span><i class="lg lg--new"></i>Nieuw</span>
+            <span><i class="lg lg--visited"></i>Bezocht</span>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <dialog class="modal" id="settingsDialog" aria-labelledby="settingsTitle">
+      <form method="dialog" class="modal-inner" id="settingsForm">
+        <header class="modal-head">
+          <h2 id="settingsTitle">Instellingen</h2>
+          <button class="icon-btn" value="close" aria-label="Sluiten">✕</button>
+        </header>
+
+        <fieldset>
+          <legend>Databron</legend>
+          <label class="radio"><input type="radio" name="source" value="auto" /> <span><b>Automatisch</b><small>Google als je een sleutel hebt ingevuld, anders OpenStreetMap</small></span></label>
+          <label class="radio"><input type="radio" name="source" value="google" /> <span><b>Google Places</b><small>Echte Google-ratings, foto's en openingstijden. Sleutel nodig.</small></span></label>
+          <label class="radio"><input type="radio" name="source" value="osm" /> <span><b>OpenStreetMap</b><small>Gratis en zonder sleutel, maar zonder ratings</small></span></label>
+          <label class="radio"><input type="radio" name="source" value="demo" /> <span><b>Demo</b><small>Verzonnen restaurants, om de app te proberen</small></span></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Google API-sleutel</legend>
+          <div class="key-row">
+            <input id="keyInput" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+            <button type="button" class="btn btn--ghost" id="toggleKey">Toon</button>
+            <button type="button" class="btn" id="testKey">Test</button>
+          </div>
+          <p class="hint" id="keyStatus"></p>
+          <details class="howto">
+            <summary>Hoe kom ik aan een sleutel? (5 minuten)</summary>
+            <ol>
+              <li>Ga naar <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Google Cloud Console → Google Maps Platform</a> en maak een project.</li>
+              <li>Zet <b>Places API (New)</b> aan.</li>
+              <li>Maak bij <i>Keys &amp; Credentials</i> een API-sleutel.</li>
+              <li><b>Beperk de sleutel</b>: <i>Website restrictions</i> met jouw domein (bijv. <code>https://jouwnaam.github.io/*</code>) en <i>API restrictions</i> op alleen Places API (New).</li>
+              <li>Plak hem hierboven. De sleutel blijft alleen op dit apparaat.</li>
+            </ol>
+            <p class="hint">Google geeft elke maand een flink gratis tegoed. Eén zoekopdracht kost 2 tot 9 aanvragen. Smaakradar onthoudt resultaten tijdens je sessie, zodat je niet dubbel betaalt.</p>
+          </details>
+          <p class="hint" id="apiUsage"></p>
+        </fieldset>
+
+        <fieldset class="grid2">
+          <label>Thema
+            <select id="themeSelect">
+              <option value="auto">Automatisch</option>
+              <option value="light">Licht</option>
+              <option value="dark">Donker</option>
+            </select>
+          </label>
+          <label>"Nieuw" betekent
+            <select id="windowSelect">
+              <option value="90">Laatste 3 maanden</option>
+              <option value="180">Laatste 6 maanden</option>
+              <option value="365">Laatste jaar</option>
+              <option value="730">Laatste 2 jaar</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Jouw gegevens</legend>
+          <p class="hint">Je afvinklijst staat alleen op dit apparaat. Maak een backup om hem op je telefoon, tablet of laptop te zetten.</p>
+          <div class="btn-row">
+            <button type="button" class="btn" id="exportBtn">⬇︎ Backup downloaden</button>
+            <label class="btn btn--ghost file-btn">⬆︎ Backup terugzetten<input type="file" id="importInput" accept="application/json,.json" hidden /></label>
+            <button type="button" class="btn btn--danger" id="resetBtn">Alles wissen</button>
+          </div>
+        </fieldset>
+
+        <footer class="modal-foot">
+          <small class="muted">Kaart © OpenStreetMap-bijdragers © CARTO · Adressen via Photon/Nominatim · Ratings via Google Places</small>
+          <button class="btn btn--primary" value="save" id="saveSettings">Opslaan</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
